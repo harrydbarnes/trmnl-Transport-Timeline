@@ -1,84 +1,71 @@
 import unittest
 import json
-from app import app, MOCK_TRAIN_DATA
-from datetime import datetime
+from project import create_app, db
+from project.models import User, Installation
+from config import Config
+from unittest.mock import patch
+import uuid
+
+class TestConfig(Config):
+    TESTING = True
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    WTF_CSRF_ENABLED = False
+    SERVER_NAME = 'localhost:5000'
 
 class TestApp(unittest.TestCase):
     def setUp(self):
-        self.app = app.test_client()
-        self.app.testing = True
+        self.app = create_app(TestConfig)
+        self.app_context = self.app.app_context()
+        self.app_context.push()
+        db.create_all()
+        self.client = self.app.test_client()
 
-    def test_mock_data_response(self):
-        # Test without keys, should return mock data
-        response = self.app.get('/api/data')
+    def tearDown(self):
+        db.session.remove()
+        db.drop_all()
+        self.app_context.pop()
+
+    def test_install_redirect(self):
+        response = self.client.get('/install')
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('usetrmnl.com/api/oauth/authorize', response.location)
+        
+        # Check that a placeholder installation with a state has been created
+        self.assertEqual(Installation.query.count(), 1)
+        self.assertIsNotNone(Installation.query.first().install_state)
+
+    @patch('project.main.oauth.trmnl.authorize_access_token')
+    @patch('project.main.oauth.trmnl.get')
+    def test_callback_and_webhook(self, mock_get, mock_authorize):
+        # 1. User starts installation
+        with self.client as c:
+            response = c.get('/install')
+            state = Installation.query.first().install_state
+
+        # 2. User is redirected back from TRMNL
+        mock_authorize.return_value = {'access_token': 'test_token'}
+        mock_get.return_value.json.return_value = {'id': 'trmnl_user_123'}
+        mock_get.return_value.raise_for_status.return_value = None
+
+        response = self.client.get(f'/callback?state={state}')
         self.assertEqual(response.status_code, 200)
-        data = json.loads(response.data)
-        self.assertIn('buses', data)
-        self.assertIn('trains', data)
-        
-        # Bus checks
-        # Should filter out Arriva (163) and keep First (19, 40)
-        lines = [b['line'] for b in data['buses']]
-        self.assertNotIn('163', lines)
-        self.assertIn('19', lines)
-        
-        # Train checks
-        # Default min_train_time is 30. Mock "now" is 11:45.
-        # 12:00 (15m away) -> Filtered
-        # 12:05 (20m away) -> Filtered (also CrossCountry)
-        # 12:15 (30m away) -> Kept
-        # 12:45 (60m away) -> Kept
-        # Sorted: 12:15 then 12:45
-        times = [t['time'] for t in data['trains']]
-        self.assertEqual(times, ['12:15', '12:45'])
-        
-    def test_train_time_filter(self):
-        # Test with min_train_time=10
-        # Mock now: 11:45
-        # 12:00 (15m) -> Kept
-        # 12:05 (CrossCountry) -> Filtered by operator
-        # 12:15 -> Kept
-        # 12:45 -> Kept
-        response = self.app.get('/api/data?min_train_time=10')
-        data = json.loads(response.data)
-        times = [t['time'] for t in data['trains']]
-        # Should include 12:00
-        self.assertIn('12:00', times)
 
-    def test_operator_filter(self):
-        # Add a CrossCountry train that satisfies the time filter (> 30 mins)
-        # to verify it is still filtered out by operator name.
-        MOCK_TRAIN_DATA['departures']['all'].append(
-            {"destination_name": "Birmingham", "aimed_departure_time": "12:50", "status": "ON TIME", "operator_name": "CrossCountry"}
-        )
-        
-        response = self.app.get('/api/data')
-        data = json.loads(response.data)
-        destinations = [t['destination'] for t in data['trains']]
-        
-        # 12:50 is > 30 mins from 11:45 (mock now), so it passes time filter.
-        # But it should be filtered by operator.
-        self.assertNotIn('Birmingham', destinations)
-        
-        # Clean up
-        MOCK_TRAIN_DATA['departures']['all'].pop()
-    
-    def test_destination_filter(self):
-        # Test bus direction filter
-        # Mock data has "East Garforth" and "Seacroft"
-        response = self.app.get('/api/data?bus_direction=East')
-        data = json.loads(response.data)
-        bus_directions = [b['destination'] for b in data['buses']]
-        self.assertIn('East Garforth', bus_directions)
-        self.assertNotIn('Seacroft', bus_directions)
+        # 3. TRMNL sends installation success webhook
+        trmnl_installation_id = str(uuid.uuid4())
+        webhook_payload = {
+            'id': trmnl_installation_id,
+            'state': state,
+            'account_id': 'trmnl_user_123'
+        }
+        response = self.client.post('/webhook/installation_success', json=webhook_payload)
+        self.assertEqual(response.status_code, 200)
 
-        # Test train destination filter
-        # Mock data has "Cambridge" and "Norwich" (Greater Anglia)
-        response = self.app.get('/api/data?train_destination=Norwich')
-        data = json.loads(response.data)
-        train_destinations = [t['destination'] for t in data['trains']]
-        self.assertIn('Norwich', train_destinations)
-        self.assertNotIn('Cambridge', train_destinations)
-        
+        # Verify the installation is finalized
+        installation = Installation.query.filter_by(trmnl_installation_id=trmnl_installation_id).first()
+        self.assertIsNotNone(installation)
+        self.assertIsNone(installation.install_state)
+        self.assertEqual(installation.user.trmnl_id, 'trmnl_user_123')
+        self.assertEqual(installation.access_token, 'test_token')
+
 if __name__ == '__main__':
     unittest.main()

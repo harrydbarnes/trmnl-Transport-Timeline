@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Manage Plugin</title>
+</head>
+<body>
+    <h1>Manage Transport Plugin</h1>
+    <form method="POST">
+        {{ form.csrf_token }}
+        <h2>Bus Settings</h2>
+        <p>
+            {{ form.bus_stop.label }}<br>
+            {{ form.bus_stop(size=32) }}
+        </p>
+        <p>
+            {{ form.bus_direction.label }}<br>
+            {{ form.bus_direction(size=32) }}
+        </p>
+
+        <h2>Train Settings</h2>
+        <p>
+            {{ form.train_station.label }}<br>
+            {{ form.train_station(size=32) }}
+        </p>
+        <p>
+            {{ form.train_destination.label }}<br>
+            {{ form.train_destination(size=32) }}
+        </p>
+        <p>
+            {{ form.min_train_time.label }}<br>
+            {{ form.min_train_time(size=32) }}
+        </p>
+
+        <h2>TransportAPI Credentials</h2>
+        <p>
+            {{ form.app_id.label }}<br>
+            {{ form.app_id(size=32) }}
+        </p>
+        <p>
+            {{ form.app_key.label }}<br>
+            {{ form.app_key(size=32) }}
+        </p>
+
+        <p>{{ form.submit() }}</p>
+    </form>
+</body>
+</html>
