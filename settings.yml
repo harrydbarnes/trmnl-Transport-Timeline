@@ -1,0 +1,36 @@
+# This file is optional for Private Plugins but good for structure if importing.
+# However, since this plugin relies on a backend URL, these settings 
+# need to be passed as query parameters in the Polling URL, not just here.
+# TRMNL "Import" feature might use this to generate a form, but the user 
+# still needs to append values to the URL or use Liquid variables if supported.
+
+name: "Bus & Train Transport"
+description: "Next 3 Bus (First) and Train (Greater Anglia) times."
+fields:
+  - name: bus_stop
+    label: "Bus Stop ATCO Code"
+    type: text
+    description: "ATCO Code for the bus stop (e.g. 450024834)"
+  - name: bus_direction
+    label: "Bus Direction (Optional)"
+    type: text
+    description: "Filter buses by direction/destination (e.g. 'Leeds')"
+  - name: train_station
+    label: "Train Station Code"
+    type: text
+    description: "CRS Code (e.g. LST for Liverpool Street)"
+  - name: train_destination
+    label: "Train Destination (Optional)"
+    type: text
+    description: "Filter trains by destination (e.g. 'Norwich')"
+  - name: min_train_time
+    label: "Minimum Train Time (mins)"
+    type: number
+    default: 30
+    description: "Hide trains departing sooner than this (walking time)."
+  - name: app_id
+    label: "TransportAPI App ID"
+    type: text
+  - name: app_key
+    label: "TransportAPI App Key"
+    type: text

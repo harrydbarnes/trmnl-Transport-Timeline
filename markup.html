@@ -1,0 +1,106 @@
+<div class="layout layout--col">
+  <div class="columns">
+    <div class="column">
+      <div class="title_bar">
+        <img class="icon" src="https://raw.githubusercontent.com/usetrmnl/plugins/master/lib/weather/icons/bus.svg" />
+        <span class="title">Bus Departures</span>
+      </div>
+      <div class="items">
+        {% for bus in buses %}
+        <div class="item">
+          <div class="meta">
+            <span class="label">{{ bus.line }}</span>
+            <span class="value">{{ bus.time }}</span>
+          </div>
+          <div class="content">{{ bus.destination }}</div>
+        </div>
+        {% endfor %}
+        {% if buses.size == 0 %}
+        <div class="item">
+          <div class="content">No buses found</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="column">
+      <div class="title_bar">
+        <img class="icon" src="https://raw.githubusercontent.com/usetrmnl/plugins/master/lib/weather/icons/train.svg" /> <!-- Placeholder icon url -->
+        <span class="title">Train Departures</span>
+      </div>
+      <div class="items">
+        {% for train in trains %}
+        <div class="item">
+          <div class="meta">
+            <span class="label">Plat {{ train.platform }}</span>
+            <span class="value">{{ train.time }}</span>
+          </div>
+          <div class="content">
+            {{ train.destination }}
+            <span class="subtext">{{ train.status }}</span>
+          </div>
+        </div>
+        {% endfor %}
+        {% if trains.size == 0 %}
+        <div class="item">
+          <div class="content">No trains found (Check > {{ min_train_time }}m)</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .layout--col {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+  .columns {
+    display: flex;
+    flex-direction: column; 
+    /* On TRMNL usually it's column based or row based depending on layout. 
+       Let's assume 2 rows: top for bus, bottom for train. */
+    height: 100%;
+  }
+  .column {
+    flex: 1;
+    border-bottom: 2px solid black;
+    padding: 5px;
+  }
+  .column:last-child {
+    border-bottom: none;
+  }
+  .title_bar {
+    display: flex;
+    align-items: center;
+    margin-bottom: 5px;
+    border-bottom: 1px solid black;
+    padding-bottom: 2px;
+  }
+  .title {
+    font-weight: bold;
+    font-size: 1.2rem;
+    margin-left: 5px;
+  }
+  .icon {
+    width: 20px;
+    height: 20px;
+  }
+  .item {
+    margin-bottom: 4px;
+  }
+  .meta {
+    display: flex;
+    justify-content: space-between;
+    font-weight: bold;
+  }
+  .content {
+    font-size: 0.9rem;
+  }
+  .subtext {
+    font-size: 0.8rem;
+    margin-left: 5px;
+  }
+</style>
