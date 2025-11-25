@@ -1,11 +1,94 @@
-from flask import Flask, request, jsonify
+from flask import Blueprint, request, jsonify, redirect, url_for, render_template, flash, session
 import requests
 from datetime import datetime, timedelta
 import os
 from dateutil import parser
 import pytz
+from .oauth import oauth
+from .decorators import token_required
+import uuid
+from .models import db, User, Installation
 
-app = Flask(__name__)
+main = Blueprint('main', __name__)
+
+@main.route('/install')
+def install():
+    state = str(uuid.uuid4())
+    redirect_uri = url_for('main.callback', _external=True)
+
+    # Create a placeholder installation object to store the state
+    installation = Installation(install_state=state)
+    db.session.add(installation)
+    db.session.commit()
+
+    return oauth.trmnl.authorize_redirect(redirect_uri, state=state)
+
+@main.route('/callback')
+def callback():
+    state = request.args.get('state')
+    installation = Installation.query.filter_by(install_state=state).first_or_404()
+
+    token = oauth.trmnl.authorize_access_token()
+    resp = oauth.trmnl.get('account')
+    resp.raise_for_status()
+    profile = resp.json()
+
+    user = User.query.filter_by(trmnl_id=profile['id']).first()
+    if user is None:
+        user = User(trmnl_id=profile['id'])
+        db.session.add(user)
+
+    installation.user = user
+    installation.access_token = token['access_token']
+    db.session.commit()
+
+    return "Installation successful! Please wait for the webhook to finalize the installation."
+
+@main.route('/webhook/installation_success', methods=['POST'])
+def webhook_installation_success():
+    data = request.json
+    state = data.get('state')
+    installation = Installation.query.filter_by(install_state=state).first_or_404()
+
+    installation.trmnl_installation_id = data.get('id')
+    installation.install_state = None # Clear the state
+    db.session.commit()
+
+    return jsonify({"status": "success"}), 200
+
+@main.route('/webhook/uninstall', methods=['POST'])
+def webhook_uninstall():
+    data = request.json
+    installation_id = data.get('id')
+    if installation_id:
+        installation = Installation.query.filter_by(trmnl_installation_id=installation_id).first()
+        if installation:
+            db.session.delete(installation)
+            db.session.commit()
+            return jsonify({"status": "success"}), 200
+from flask_wtf import FlaskForm
+from wtforms import StringField, IntegerField, SubmitField
+
+class SettingsForm(FlaskForm):
+    bus_stop = StringField('Bus Stop ATCO Code')
+    bus_direction = StringField('Bus Direction (Optional)')
+    train_station = StringField('Train Station CRS Code')
+    train_destination = StringField('Train Destination (Optional)')
+    min_train_time = IntegerField('Minimum Train Time (mins)')
+    app_id = StringField('App ID')
+    app_key = StringField('App Key')
+    submit = SubmitField('Save Settings')
+
+@main.route('/manage', methods=['GET', 'POST'])
+@token_required
+def manage(installation):
+    form = SettingsForm(obj=installation)
+    if form.validate_on_submit():
+        form.populate_obj(installation)
+        db.session.commit()
+        flash('Settings saved successfully!')
+        return redirect(url_for('main.manage'))
+    return render_template('manage.html', installation=installation, form=form)
 
 # Mock data for testing without keys
 MOCK_BUS_DATA = {
@@ -74,15 +157,16 @@ def fetch_train_data(app_id, app_key, station_code):
         print(f"Error fetching train data: {e}")
         return None
 
-@app.route('/api/data', methods=['GET'])
-def get_data():
-    app_id = request.args.get('app_id')
-    app_key = request.args.get('app_key')
-    bus_stop_id = request.args.get('bus_stop')
-    bus_direction = request.args.get('bus_direction', '').lower()
-    train_station_code = request.args.get('train_station')
-    train_destination = request.args.get('train_destination', '').lower()
-    min_train_time = int(request.args.get('min_train_time', 30))
+@main.route('/api/data', methods=['GET'])
+@token_required
+def get_data(installation):
+    app_id = installation.app_id
+    app_key = installation.app_key
+    bus_stop_id = installation.bus_stop
+    bus_direction = (installation.bus_direction or '').lower()
+    train_station_code = installation.train_station
+    train_destination = (installation.train_destination or '').lower()
+    min_train_time = installation.min_train_time or 30
     
     # Ensure UK time for accurate comparison
     uk_tz = pytz.timezone('Europe/London')
@@ -218,6 +302,3 @@ def get_data():
         "trains": trains
     })
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
