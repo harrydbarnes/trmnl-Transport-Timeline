@@ -166,7 +166,7 @@ def get_data(installation):
     bus_direction = (installation.bus_direction or '').lower()
     train_station_code = installation.train_station
     train_destination = (installation.train_destination or '').lower()
-    min_train_time = installation.min_train_time or 30
+    min_train_time = installation.min_train_time if installation.min_train_time is not None else 30
     
     # Ensure UK time for accurate comparison
     uk_tz = pytz.timezone('Europe/London')
