@@ -2,9 +2,6 @@ import unittest
 from project import create_app, db
 from project.models import User, Installation
 from config import Config
-from datetime import datetime, timedelta
-import pytz
-import json
 
 class TestConfig(Config):
     TESTING = True
