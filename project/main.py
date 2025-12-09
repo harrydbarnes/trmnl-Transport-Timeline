@@ -166,22 +166,19 @@ def get_data(installation):
     bus_direction = (installation.bus_direction or '').lower()
     train_station_code = installation.train_station
     train_destination = (installation.train_destination or '').lower()
-    min_train_time = installation.min_train_time or 30
+    min_train_time = (
+        installation.min_train_time
+        if installation.min_train_time is not None
+        else Installation.min_train_time.default.arg
+    )
     
     # Ensure UK time for accurate comparison
     uk_tz = pytz.timezone('Europe/London')
     now = datetime.now(uk_tz)
     
-    # If testing with mock data (no app_id), mock 'now' as 11:45 UK time
-    if not app_id:
-        # Create a naive datetime then localize it
-        naive_mock_time = datetime.strptime("11:45", "%H:%M").replace(year=now.year, month=now.month, day=now.day)
-        now = uk_tz.localize(naive_mock_time)
-
     # Process Bus Data
     buses = []
-    # If testing without app_id (mock mode), assume we want data even if bus_stop_id is missing or arbitrary
-    if bus_stop_id or not app_id:
+    if bus_stop_id:
         bus_data = fetch_bus_data(app_id, app_key, bus_stop_id)
         if bus_data and 'departures' in bus_data:
             all_departures = []
@@ -217,8 +214,7 @@ def get_data(installation):
 
     # Process Train Data
     trains = []
-    # If testing without app_id (mock mode), assume we want data
-    if train_station_code or not app_id:
+    if train_station_code:
         train_data = fetch_train_data(app_id, app_key, train_station_code)
         if train_data and 'departures' in train_data:
             # departures might have keys 'all', or 'from', etc.
