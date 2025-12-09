@@ -13,6 +13,14 @@ main = Blueprint('main', __name__)
 
 @main.route('/install')
 def install():
+    """Initiates the TRMNL installation flow.
+
+    This route generates a unique state for the installation, creates a temporary
+    `Installation` record, and redirects the user to the TRMNL authorization URL.
+
+    Returns:
+        Response: A redirect to the TRMNL authorization page.
+    """
     state = str(uuid.uuid4())
     redirect_uri = url_for('main.callback', _external=True)
 
@@ -25,6 +33,15 @@ def install():
 
 @main.route('/callback')
 def callback():
+    """Handles the OAuth callback from TRMNL.
+
+    This route verifies the state parameter, retrieves the access token, and associates
+    the installation with a user. It updates the `Installation` record with the
+    user's details and access token.
+
+    Returns:
+        str: A success message indicating the installation is complete.
+    """
     state = request.args.get('state')
     installation = Installation.query.filter_by(install_state=state).first_or_404()
 
@@ -46,6 +63,15 @@ def callback():
 
 @main.route('/webhook/installation_success', methods=['POST'])
 def webhook_installation_success():
+    """Handles the installation success webhook from TRMNL.
+
+    This route receives a POST request when a plugin is successfully installed.
+    It updates the `Installation` record with the TRMNL installation ID and clears
+    the temporary state.
+
+    Returns:
+        Response: A JSON response with status 'success'.
+    """
     data = request.json
     state = data.get('state')
     installation = Installation.query.filter_by(install_state=state).first_or_404()
@@ -58,6 +84,14 @@ def webhook_installation_success():
 
 @main.route('/webhook/uninstall', methods=['POST'])
 def webhook_uninstall():
+    """Handles the uninstall webhook from TRMNL.
+
+    This route receives a POST request when a plugin is uninstalled.
+    It identifies the installation by ID and removes it from the database.
+
+    Returns:
+        Response: A JSON response with status 'success', or 200 if not found (idempotent).
+    """
     data = request.json
     installation_id = data.get('id')
     if installation_id:
@@ -66,10 +100,24 @@ def webhook_uninstall():
             db.session.delete(installation)
             db.session.commit()
             return jsonify({"status": "success"}), 200
+    return jsonify({"status": "success"}), 200
+
 from flask_wtf import FlaskForm
 from wtforms import StringField, IntegerField, SubmitField
 
 class SettingsForm(FlaskForm):
+    """Form for configuring the plugin settings.
+
+    Attributes:
+        bus_stop (StringField): The ATCO code for the bus stop.
+        bus_direction (StringField): Optional filter for bus direction.
+        train_station (StringField): The CRS code for the train station.
+        train_destination (StringField): Optional filter for train destination.
+        min_train_time (IntegerField): Minimum minutes before departure to show a train.
+        app_id (StringField): TransportAPI Application ID.
+        app_key (StringField): TransportAPI Application Key.
+        submit (SubmitField): The submit button.
+    """
     bus_stop = StringField('Bus Stop ATCO Code')
     bus_direction = StringField('Bus Direction (Optional)')
     train_station = StringField('Train Station CRS Code')
@@ -82,6 +130,17 @@ class SettingsForm(FlaskForm):
 @main.route('/manage', methods=['GET', 'POST'])
 @token_required
 def manage(installation):
+    """Handles the settings management page for the plugin.
+
+    This route renders a form to update the plugin settings.
+    It requires a valid authentication token.
+
+    Args:
+        installation (Installation): The current installation object (injected by decorator).
+
+    Returns:
+        Response: The rendered HTML template or a redirect after successful update.
+    """
     form = SettingsForm(obj=installation)
     if form.validate_on_submit():
         form.populate_obj(installation)
@@ -119,6 +178,17 @@ MOCK_TRAIN_DATA = {
 }
 
 def fetch_bus_data(app_id, app_key, stop_id):
+    """Fetches live bus departure data from TransportAPI.
+
+    Args:
+        app_id (str): TransportAPI App ID.
+        app_key (str): TransportAPI App Key.
+        stop_id (str): The ATCO code of the bus stop.
+
+    Returns:
+        dict or None: The parsed JSON response from the API, or None if an error occurs
+                      or credentials are missing (returns mock data if missing).
+    """
     if not app_id or not app_key:
         return MOCK_BUS_DATA
     
@@ -139,6 +209,17 @@ def fetch_bus_data(app_id, app_key, stop_id):
         return None
 
 def fetch_train_data(app_id, app_key, station_code):
+    """Fetches live train departure data from TransportAPI.
+
+    Args:
+        app_id (str): TransportAPI App ID.
+        app_key (str): TransportAPI App Key.
+        station_code (str): The CRS code of the train station.
+
+    Returns:
+        dict or None: The parsed JSON response from the API, or None if an error occurs
+                      or credentials are missing (returns mock data if missing).
+    """
     if not app_id or not app_key:
         return MOCK_TRAIN_DATA
 
@@ -160,6 +241,18 @@ def fetch_train_data(app_id, app_key, station_code):
 @main.route('/api/data', methods=['GET'])
 @token_required
 def get_data(installation):
+    """API endpoint to retrieve formatted bus and train data for the plugin.
+
+    This route fetches data based on the installation's settings, filters it
+    (e.g., by operator, direction, minimum time), and returns a JSON payload
+    formatted for the TRMNL device.
+
+    Args:
+        installation (Installation): The current installation object (injected by decorator).
+
+    Returns:
+        Response: A JSON response containing lists of bus and train departures.
+    """
     app_id = installation.app_id
     app_key = installation.app_key
     bus_stop_id = installation.bus_stop
@@ -297,4 +390,3 @@ def get_data(installation):
         "buses": buses,
         "trains": trains
     })
-
