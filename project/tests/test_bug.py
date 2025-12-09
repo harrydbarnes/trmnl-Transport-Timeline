@@ -27,44 +27,14 @@ class TestBug(unittest.TestCase):
 
     @patch('project.main.fetch_train_data')
     @patch('project.main.fetch_bus_data')
-    @patch('project.main.datetime')
-    def test_min_train_time_zero(self, mock_datetime, mock_fetch_bus, mock_fetch_train):
+    @patch('project.main.datetime.now')
+    def test_min_train_time_zero(self, mock_datetime_now, mock_fetch_bus, mock_fetch_train):
         # Configure Time Mock
         uk_tz = pytz.timezone('Europe/London')
-        # We need a fixed time: 11:45 UK time today
-        # To make it "today", we should probably use real today but force 11:45
-        # Or just pick a fixed date. The code uses `now.date()` to combine with train time.
-        # If the train data has only HH:MM, the date matters for "today".
-
         # Let's fix "today" to a known date so "12:00" is definitely in the future relative to "11:45"
         fixed_now = datetime(2023, 10, 27, 11, 45, 0)
         localized_now = uk_tz.localize(fixed_now)
-
-        # When datetime.now(uk_tz) is called, return our localized time
-        mock_datetime.now.return_value = localized_now
-        # Side effect: if called without args, maybe return naive? Code calls it with tz.
-
-        # We also need to mock datetime.strptime because the code uses it for parsing times
-        # But patching 'project.main.datetime' replaces the whole class.
-        # We must ensure strptime works.
-        # Ideally we only patch `now`. But `from datetime import datetime` means we patch the class.
-        # If we patch the class, we lose `strptime` unless we provide it.
-        # Strategy: Use `wraps` to pass through everything else?
-        # Or just mock `now` specifically if possible?
-        # Since `datetime` is imported in `project.main`, patching `project.main.datetime` mocks the class.
-        # A common workaround for `datetime` mocking is tricky.
-        # Let's try assigning the side_effect to delegate to real datetime for other methods?
-        # Or better: use a library like `freezegun`? It's likely not installed.
-        # Standard approach:
-        # mock_datetime.now.return_value = localized_now
-        # mock_datetime.strptime = datetime.strptime # Pass through
-        # mock_datetime.combine = datetime.combine
-        # mock_datetime.max = datetime.max
-
-        mock_datetime.now.return_value = localized_now
-        mock_datetime.strptime.side_effect = lambda *args, **kwargs: datetime.strptime(*args, **kwargs)
-        mock_datetime.combine.side_effect = lambda *args, **kwargs: datetime.combine(*args, **kwargs)
-        mock_datetime.max = datetime.max
+        mock_datetime_now.return_value = localized_now
 
         # Configure Data Mocks
         MOCK_TRAIN_DATA = {
